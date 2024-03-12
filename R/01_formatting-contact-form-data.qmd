@@ -1,0 +1,74 @@
+---
+title: "Formatting waterways contact form responses"
+author: "Dave"
+format: html
+editor: visual
+execute: 
+  echo: false
+---
+
+## Libraries
+
+```{r libraries}
+#| include: false
+library(here)
+library(fs)
+
+library(vroom)
+library(dplyr)
+library(tidyr)
+library(httr)
+```
+
+## Read data
+
+```{r read_data}
+#| echo: true
+contacts <- vroom(
+  here("contact-form-responses", "contact-form-responses_2024-03-12.csv"),
+  col_names = c("first_name", "last_name", "email_address", "phone_number",
+                "subject", "canal_bridge_lock_or_what3words",
+                "postal_address_or_boat_name_number",
+                "body", "send", "reset", "ip", "url", "form_id", "date_created"),
+  col_types = "cccccccccccccc",
+  skip = 1)
+
+contacts <- select(contacts, -send, -reset)
+```
+
+## Filter spam
+
+There are lots of bot-spammed form responses. Luckily a lot of the bots don't know what to do with the canal/lock/bridge field and put the same thing in there as they do in their actual message body. This is a very easy way to filter out the bots.
+
+```{r filter_spam}
+#| echo: true
+nrow(contacts)
+contacts <- filter(contacts, canal_bridge_lock_or_what3words != body)
+nrow(contacts)
+```
+
+## Format URLs
+
+```{r format_urls}
+#| echo: true
+contacts <- 
+  rowwise(contacts) |> 
+  mutate(parsed_url = list(parse_url(url)),
+         web_page = parsed_url$path,
+         query = list(parsed_url$query)) |> 
+  select(-parsed_url) |> 
+  ungroup()
+
+summarise(contacts, responses = n(), .by = web_page) |> 
+  arrange(-responses)
+```
+
+## Save
+
+```{r save}
+#| echo: true
+saveRDS(contacts,
+        here("contact-form-responses-formatted", 
+             "responses-formatted_2024-03-12.RDS"))
+```
+
